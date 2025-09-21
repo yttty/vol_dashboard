@@ -65,7 +65,19 @@ def fetch_kline(instrument_name: str, start_dt_utc: datetime.datetime, end_dt_ut
         logger.info(
             f"Fetched {len(kline_df)} kline of {instrument_name}! Elps time: {(datetime.datetime.now() - _dt)}"
         )
-        kline_df = kline_df[["symbol", "interval", "timestamp", "exchange", "open", "high", "low", "close", "volume"]]
+        kline_df = kline_df[
+            [
+                "symbol",
+                "interval",
+                "timestamp",
+                "exchange",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+            ]
+        ]
         _dt = datetime.datetime.now()
         db_conn.insert_klines(list(kline_df.itertuples(index=False, name=None)))
         logger.info(
@@ -95,8 +107,8 @@ def check_kline(instrument_name: str, start_dt_utc: datetime.datetime, end_dt_ut
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start_dt", type=str, help="20250918")
-    parser.add_argument("--end_dt", type=str, help="20250918")
+    parser.add_argument("-s", "--start_dt", type=str, help="20250918")
+    parser.add_argument("-e", "--end_dt", type=str, help="20250918")
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
 

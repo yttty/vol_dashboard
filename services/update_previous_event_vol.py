@@ -1,7 +1,6 @@
 import datetime
 
 import numpy as np
-import pandas as pd
 from config import INSTRUMENTS
 from db_connector import VolDbConnector
 from loguru import logger
@@ -11,15 +10,16 @@ MINUTES_BEFORE_RELEASE = 24 * 60
 MINUTES_AFTER_RELEASE = 30
 
 
-def calculate_realized_volatility(npa: np.array) -> float:
+def calculate_realized_volatility(prices_by_min: np.array) -> float:
     """Calculates annualized realized volatility from 1-minute price data."""
-    if len(npa) < 2:
-        return 0.0
-    # # log_returns = np.log(df["close"] / df["close"].shift(1))
-    # realized_variance = np.sum(log_returns**2)
-    # minutes_in_year = 365.25 * 24 * 60
-    # annualized_volatility = np.sqrt(realized_variance) * np.sqrt(minutes_in_year / len(df))
-    # return annualized_volatility * 100
+    if len(prices_by_min) < 2:
+        raise ValueError
+    log_prices = np.log(prices_by_min)
+    log_returns = np.diff(log_prices)
+    realized_variance = np.sum(log_returns**2)
+    minutes_in_year = 365.25 * 24 * 60
+    annualized_volatility = np.sqrt(realized_variance) * np.sqrt(minutes_in_year / len(prices_by_min))
+    return float(annualized_volatility)
 
 
 def update_previous_event_vol():
@@ -35,7 +35,7 @@ def update_previous_event_vol():
         if end_after_dt < datetime.datetime.now(tz=datetime.timezone.utc):
             previous_events.append((event_name, date_str, time_et_str))
 
-    for event_name, date_str, time_et_str in previous_events[-1:]:
+    for event_name, date_str, time_et_str in previous_events:
         naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
         local_dt, utc_dt = et_to_utc(naive_et_dt)
         start_before_dt = utc_dt - datetime.timedelta(minutes=MINUTES_BEFORE_RELEASE)
@@ -70,8 +70,25 @@ def update_previous_event_vol():
 
             vol_before = calculate_realized_volatility(before_close)
             vol_after = calculate_realized_volatility(after_close)
-            event_vol = np.sqrt(max((vol_after / 100) ** 2 - (vol_before / 100) ** 2, 0)) * 100
-            logger.info(f"Event vol for {event_vol_id} is {event_vol}")
+            event_vol = float(np.sqrt(max((vol_after / 100) ** 2 - (vol_before / 100) ** 2, 0)) * 100)
+            logger.info(
+                f"Event[{event_vol_id}] EventVol[{event_vol:.4f}] VolBefore[{vol_before:.4f}] VolAfter[{vol_after:.4f}]"
+            )
+            update_dt = datetime.datetime.now(tz=datetime.timezone.utc)
+            db_conn.insert_event_vols(
+                vol_records=[
+                    (
+                        event_vol_id,
+                        event_name,
+                        instrument_name,
+                        utc_dt,
+                        vol_before,
+                        vol_after,
+                        event_vol,
+                        update_dt,
+                    )
+                ]
+            )
 
 
 if __name__ == "__main__":

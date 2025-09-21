@@ -27,30 +27,30 @@ services:
       - fbg_network
     restart: always
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: fbg_grafana
-    ports:
-      - 3000:3000
-    volumes:
-      - fbg_grafana_data:/var/lib/grafana
-    networks:
-      - fbg_network
-    restart: unless-stopped
-
-  # portainer:
-  #   image: portainer/portainer-ce:alpine
-  #   container_name: portainer
-  #   command: -H unix:///var/run/docker.sock
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: fbg_grafana
   #   ports:
-  #     - 9000:9000
-  #     - 9443:9443
+  #     - 3000:3000
   #   volumes:
-  #     - "/var/run/docker.sock:/var/run/docker.sock"
-  #     - "portainer_data:/data"
+  #     - fbg_grafana_data:/var/lib/grafana
   #   networks:
   #     - fbg_network
-  #   restart: always
+  #   restart: unless-stopped
+
+  portainer:
+    image: portainer/portainer-ce:alpine
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    ports:
+      - 9090:9000
+      - 9443:9443
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "portainer_data:/data"
+    networks:
+      - fbg_network
+    restart: always
 
 networks:
   fbg_network:
@@ -58,5 +58,5 @@ networks:
 volumes:
   fbg_postgres_data:
   fbg_redis_data:
-  fbg_grafana_data:
-  # portainer_data:
+  # fbg_grafana_data:
+  portainer_data:

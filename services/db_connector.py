@@ -52,6 +52,7 @@ class EventVol(VolDeclBase):
     vol_before: Mapped[float]
     vol_after: Mapped[float]
     event_vol: Mapped[float]
+    update_dt: Mapped[datetime.datetime]
 
 
 class KLine(VolDeclBase):
@@ -163,6 +164,7 @@ class VolDbConnector(DbConnector):
             vol_before = event_vol_record[4]
             vol_after = event_vol_record[5]
             event_vol = event_vol_record[6]
+            update_dt = event_vol_record[7]
             _existing_records = self.get_event_vol_by_id(id=id)
             if len(_existing_records) != 0:
                 _stmt = (
@@ -175,6 +177,7 @@ class VolDbConnector(DbConnector):
                         vol_before=vol_before,
                         vol_after=vol_after,
                         event_vol=event_vol,
+                        update_dt=update_dt,
                     )
                 )
             else:
@@ -186,6 +189,7 @@ class VolDbConnector(DbConnector):
                     vol_before=vol_before,
                     vol_after=vol_after,
                     event_vol=event_vol,
+                    update_dt=update_dt,
                 )
 
             try:
