@@ -140,15 +140,15 @@ app.layout = dbc.Container(
 )
 
 
-# 可选：添加刷新回调
-@app.callback(Output("output-div", "children"), Input("refresh-btn", "n_clicks"), prevent_initial_call=True)
+@app.callback(
+    Output("output-div", "children"),
+    Input("refresh-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
 def refresh_data(n_clicks):
-    # 你可以在这里重新读取 Redis 数据并更新页面（需要配合 dcc.Store 或全局变量）
-    # 为简化，这里仅提示已刷新
     return f"Data refreshed! (No. clicks: {n_clicks})"
 
 
-# ========== 4. 运行应用 ==========
 if __name__ == "__main__":
     print("Dash app running on http://127.0.0.1:8050")
     app.run(debug=True)
