@@ -176,4 +176,4 @@ def update_hist_vol_currency(selected_currencies, selected_events):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9092, debug=True)
+    app.run(host="0.0.0.0", port=8082, debug=True)
