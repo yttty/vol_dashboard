@@ -208,6 +208,7 @@ class VolDbConnector(DbConnector):
                     (
                         data.id,
                         data.event_name,
+                        data.symbol,
                         data.utc_dt,
                         data.vol_before,
                         data.vol_after,
@@ -227,6 +228,7 @@ class VolDbConnector(DbConnector):
                     (
                         data.id,
                         data.event_name,
+                        data.symbol,
                         data.utc_dt,
                         data.vol_before,
                         data.vol_after,

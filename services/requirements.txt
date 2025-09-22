@@ -6,5 +6,5 @@ pytz
 requests
 redis
 dash
-# feffery-antd-components
 dash-bootstrap-components
+plotly

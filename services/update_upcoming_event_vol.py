@@ -112,6 +112,8 @@ def update_upcoming_event_vol_by_currency(currency: str, matched_event_expiry: l
                     "Next_Option": iv_strike_next["instrument_name"],
                     "Next_IV": iv_strike_next["implied_vol"],
                     "Next_TTE": iv_strike_next["tte"],
+                    "Col_ID": next_expiry.date().strftime("%-d%b%y").upper(),
+                    "Currency": currency,
                     "Fwd_Vol": forward_vol,
                     "Data_Fetch_Timestamp": fetch_timestamp,
                 }
@@ -149,8 +151,13 @@ def update_upcoming_event_vol():
             " ".join([expiration.isoformat() for expiration in all_expirations]),
         )
     )
+    redis_instance = get_redis_instance()
+    redis_instance.set(
+        name=f"Expirations",
+        value=json.dumps([expiration.strftime("%-d%b%y").upper() for expiration in all_expirations]),
+    )
     matched_event_expiry = match_events_to_expiry(upcoming_events, all_expirations)
-    logger.info(f"matched_event_expiry: {matched_event_expiry}")
+    # logger.info(f"matched_event_expiry: {matched_event_expiry}")
 
     for inst in INSTRUMENTS:
         currency = inst.replace("-PERPETUAL", "")

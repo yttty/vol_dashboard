@@ -37,6 +37,7 @@ previous_vol_df = pd.DataFrame(
     columns=[
         "ID",
         "Event Name",
+        "Symbol",
         "Time",
         "Vol Before",
         "Vol After",
