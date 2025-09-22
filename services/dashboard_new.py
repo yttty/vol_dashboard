@@ -47,7 +47,7 @@ class DataLoader:
             return json.loads(data)
         return {}
 
-    def prepare_fwd_vol_data(self) -> pd.DataFrame:
+    def prepare_fwd_vol_data(self, remove_event: bool = False) -> pd.DataFrame:
         all_expirations_l = RDS.get(name=f"Expirations")
         all_expirations = json.loads(all_expirations_l)
         columns = ["Currency"] + all_expirations
@@ -57,7 +57,10 @@ class DataLoader:
             row["Currency"] = currency
             upcoming_event_vol = self.get_upcoming_event_data_from_redis(currency)
             for upcoming_event_record in upcoming_event_vol:
-                row[upcoming_event_record["Col_ID"]] = upcoming_event_record["Fwd_Vol"]
+                if not remove_event:
+                    row[upcoming_event_record["Col_ID"]] = upcoming_event_record["Fwd_Vol"]
+                else:
+                    row[upcoming_event_record["Col_ID"]] = upcoming_event_record["Event_Removed_Vol"]
             fwd_vol_rows_l.append(row)
         fwd_vol_df = pd.DataFrame(fwd_vol_rows_l, columns=columns)
         for expiration in all_expirations:
@@ -67,19 +70,34 @@ class DataLoader:
 
 data_loader = DataLoader()
 previous_vol_df = data_loader.prepare_historical_vol_data()
-fwd_vol_df = data_loader.prepare_fwd_vol_data()
+fwd_vol_df = data_loader.prepare_fwd_vol_data(remove_event=False)
+event_rm_fwd_vol_df = data_loader.prepare_fwd_vol_data(remove_event=True)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = html.Div(
     [
         html.H1("Vol Dashboard", style={"textAlign": "center"}),
-        html.H2("Forward Volatility Table", style={"textAlign": "center"}),
+        html.H2("Forward Volatility", style={"textAlign": "center"}),
         html.Div(
             [
                 dash_table.DataTable(
                     id="fwd-vol-table",
                     columns=[{"name": i, "id": i} for i in fwd_vol_df.columns],  # 定义表格列
                     data=fwd_vol_df.to_dict("records"),  # 初始数据
+                    style_table={"overflowX": "auto"},
+                    style_cell={"textAlign": "left", "padding": "5px"},
+                    style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
+                )
+            ],
+            style={"width": "80%", "margin": "20px auto"},
+        ),
+        html.H2("Event Removed Forward Volatility", style={"textAlign": "center"}),
+        html.Div(
+            [
+                dash_table.DataTable(
+                    id="fwd-vol-table",
+                    columns=[{"name": i, "id": i} for i in event_rm_fwd_vol_df.columns],  # 定义表格列
+                    data=event_rm_fwd_vol_df.to_dict("records"),  # 初始数据
                     style_table={"overflowX": "auto"},
                     style_cell={"textAlign": "left", "padding": "5px"},
                     style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},

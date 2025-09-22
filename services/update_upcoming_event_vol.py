@@ -6,12 +6,14 @@ from pprint import pformat, pprint
 import pandas as pd
 from api_helper import DeribitAPI
 from config import INSTRUMENTS
+from db_connector import VolDbConnector
 from event_utils import get_upcoming_events
 from loguru import logger
 from redis_connector import get_redis_instance
 from tz_utils import et_to_utc
 
 api_helper = DeribitAPI()
+DB_CONN = VolDbConnector()
 
 
 def get_underlying_price_for_expiries(currency: str, expiry_l: list[datetime.datetime], spot_price: float):
@@ -51,7 +53,11 @@ def match_events_to_expiry(upcoming_events: list[dict], all_expirations: list[da
     return matched_event_expiry
 
 
-def update_upcoming_event_vol_by_currency(currency: str, matched_event_expiry: list[dict]):
+def update_upcoming_event_vol_by_currency(
+    currency: str,
+    matched_event_expiry: list[dict],
+    avg_historical_vol: pd.DataFrame,
+):
     currency = currency.upper()
     logger.info(f"Fetching current {currency} index (spot) price for fallback...")
     spot_price = api_helper.get_index_price(currency)
@@ -96,6 +102,8 @@ def update_upcoming_event_vol_by_currency(currency: str, matched_event_expiry: l
                 / (iv_strike_next["tte"] - iv_strike_prev["tte"])
             )
 
+            event_removed_vol = -1
+
             results.append(
                 {
                     "Events_Included": [
@@ -115,6 +123,7 @@ def update_upcoming_event_vol_by_currency(currency: str, matched_event_expiry: l
                     "Col_ID": next_expiry.date().strftime("%-d%b%y").upper(),
                     "Currency": currency,
                     "Fwd_Vol": forward_vol,
+                    "Event_Removed_Vol": event_removed_vol,
                     "Data_Fetch_Timestamp": fetch_timestamp,
                 }
             )
@@ -129,6 +138,31 @@ def update_upcoming_event_vol_by_currency(currency: str, matched_event_expiry: l
     redis_instance = get_redis_instance()
     redis_instance.set(name=f"FwdVol:{currency}", value=json.dumps(results))
     logger.info("Save to redis success")
+
+
+def estimate_event_vol() -> pd.DataFrame:
+    """
+    Returns:
+        pd.DataFrame: access value by `df.loc["CPI","BTC"]`
+    """
+    previous_vol_data = DB_CONN.get_event_vols()
+    previous_vol_df = pd.DataFrame(
+        previous_vol_data,
+        columns=[
+            "ID",
+            "Event Name",
+            "Symbol",
+            "UTC Time",
+            "Vol Before",
+            "Vol After",
+            "Event Vol",
+        ],
+    )
+    previous_vol_df = previous_vol_df[previous_vol_df["Event Vol"] > 0]
+    previous_vol_df["Currency"] = previous_vol_df["Symbol"].apply(lambda x: x.replace("-PERPETUAL", ""))
+    previous_vol_df = previous_vol_df[["Event Name", "Currency", "Event Vol"]]
+    avg_historical_vol = previous_vol_df.groupby(["Event Name", "Currency"]).mean()
+    return avg_historical_vol
 
 
 def update_upcoming_event_vol():
@@ -158,10 +192,11 @@ def update_upcoming_event_vol():
     )
     matched_event_expiry = match_events_to_expiry(upcoming_events, all_expirations)
     # logger.info(f"matched_event_expiry: {matched_event_expiry}")
+    avg_historical_vol = estimate_event_vol()
 
     for inst in INSTRUMENTS:
         currency = inst.replace("-PERPETUAL", "")
-        update_upcoming_event_vol_by_currency(currency, matched_event_expiry)
+        update_upcoming_event_vol_by_currency(currency, matched_event_expiry, avg_historical_vol)
 
 
 if __name__ == "__main__":
