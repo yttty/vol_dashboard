@@ -1,13 +1,11 @@
 import datetime
 
 import numpy as np
-from config import INSTRUMENTS
+from config import INSTRUMENTS, MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
 from db_connector import VolDbConnector
+from event_utils import get_previous_events
 from loguru import logger
 from tz_utils import et_to_utc
-
-MINUTES_BEFORE_RELEASE = 24 * 60
-MINUTES_AFTER_RELEASE = 30
 
 
 def calculate_realized_volatility(prices_by_min: np.array) -> float:
@@ -24,20 +22,10 @@ def calculate_realized_volatility(prices_by_min: np.array) -> float:
 
 def update_previous_event_vol():
     db_conn = VolDbConnector()
-    events = db_conn.get_events()
-
-    previous_events = []
-    for event_name, date_str, time_et_str in events:
-        naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
-        _, utc_dt = et_to_utc(naive_et_dt)
-        start_before_dt = utc_dt - datetime.timedelta(minutes=MINUTES_BEFORE_RELEASE)
-        end_after_dt = utc_dt + datetime.timedelta(minutes=MINUTES_AFTER_RELEASE)
-        if end_after_dt < datetime.datetime.now(tz=datetime.timezone.utc):
-            previous_events.append((event_name, date_str, time_et_str))
-
+    previous_events = get_previous_events()
     for event_name, date_str, time_et_str in previous_events:
         naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
-        local_dt, utc_dt = et_to_utc(naive_et_dt)
+        _, utc_dt = et_to_utc(naive_et_dt)
         start_before_dt = utc_dt - datetime.timedelta(minutes=MINUTES_BEFORE_RELEASE)
         end_after_dt = utc_dt + datetime.timedelta(minutes=MINUTES_AFTER_RELEASE)
 
