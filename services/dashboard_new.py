@@ -176,5 +176,5 @@ def update_hist_vol_currency(selected_currencies, selected_events):
 
 
 if __name__ == "__main__":
-    print("Dash app running on http://127.0.0.1:8050")
+    print("Dash app running on http://127.0.0.1:9090")
     app.run(debug=True)
