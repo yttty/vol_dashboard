@@ -1,4 +1,4 @@
-from db_connector import VolDbConnector
+from vol_dashboard.connector.db_connector import VolDbConnector
 
 # --- 🗓️ Economic Event Schedule ---
 # Structure: ('Event Name', 'YYYY-MM-DD', 'HH:MM in ET')

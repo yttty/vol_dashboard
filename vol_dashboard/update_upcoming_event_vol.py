@@ -4,9 +4,9 @@ import math
 from pprint import pformat, pprint
 
 import pandas as pd
-from api_helper import DeribitAPI
-from config import INSTRUMENTS
-from db_connector import VolDbConnector
+from vol_dashboard.api.deribit import DeribitAPI
+from config import INSTRUMENTS, YEARLY_TRADING_DAYS
+from vol_dashboard.connector.db_connector import VolDbConnector
 from event_utils import get_upcoming_events
 from loguru import logger
 from redis_connector import get_redis_instance
@@ -40,27 +40,43 @@ def match_events_to_expiry(upcoming_events: list[dict], all_expirations: list[da
         _dt_1 = datetime.datetime.combine(all_expirations[i], datetime.time(hour=8, tzinfo=datetime.timezone.utc))
         _dt_2 = datetime.datetime.combine(all_expirations[i + 1], datetime.time(hour=8, tzinfo=datetime.timezone.utc))
         expiry_dt_pair = (_dt_1, _dt_2)
+        exp1_events = []
+        exp2_events = []
         matched_events = []
         for event in upcoming_events:
+            if event["utc_dt"] < _dt_2:
+                exp2_events.append(event)
+            if event["utc_dt"] < _dt_1:
+                exp1_events.append(event)
             if _dt_1 <= event["utc_dt"] < _dt_2:
                 matched_events.append(event)
         matched_event_expiry.append(
             {
                 "expiry_dt_pair": expiry_dt_pair,
+                "exp1_events": exp1_events,
+                "exp2_events": exp2_events,
                 "matched_events": matched_events,
             }
         )
     return matched_event_expiry
 
 
-def get_event_removed_iv(raw_iv: float, tte: float, estimated_event_vol: list[float]):
-    pass
+def get_event_removed_iv(raw_iv: float, tte: float, estimated_event_vol_l: list[float]) -> float:
+    raw_y = (raw_iv * 100) * math.sqrt(tte) / 2000
+    y_er_sq = raw_y**2 - sum(
+        [(estimated_event_vol / math.sqrt(YEARLY_TRADING_DAYS)) ** 2 for estimated_event_vol in estimated_event_vol_l]
+    )
+    if y_er_sq < 0:
+        y_er_sq = 0
+    y_er = math.sqrt(y_er_sq)
+    iv_er = (y_er * 2000 / math.sqrt(tte)) / 100
+    return y_er, iv_er
 
 
 def update_upcoming_event_vol_by_currency(
     currency: str,
     matched_event_expiry: list[dict],
-    avg_historical_vol: dict[tuple, float],
+    est_historical_vol: dict[tuple, float],
 ):
     currency = currency.upper()
     logger.info(f"Fetching current {currency} index (spot) price for fallback...")
@@ -108,20 +124,29 @@ def update_upcoming_event_vol_by_currency(
                 / (iv_strike_next["tte"] - iv_strike_prev["tte"])
             )
 
-            # get event-removed implied vol for expiry_next
-            estimated_event_vol_l = []
-            for events in event_expiry["matched_events"]:
-                estimated_event_vol_l.append(avg_historical_vol[(events["event_name"], currency)])
-
-            # Event-removed Y
-            y_pct_er = iv_strike_next["implied_vol"] ** 2 * iv_strike_next["tte"] / 2000 - sum(
-                [estimated_event_vol**2 for estimated_event_vol in estimated_event_vol_l]
+            # get event-removed implied vol for expiry_prev and expiry_next
+            exp_p_events_vol_l = [
+                est_historical_vol[(events["event_name"], currency)] for events in event_expiry["exp1_events"]
+            ]
+            exp_n_events_vol_l = [
+                est_historical_vol[(events["event_name"], currency)] for events in event_expiry["exp2_events"]
+            ]
+            _, iv_strike_prev["implied_vol_er"] = get_event_removed_iv(
+                raw_iv=iv_strike_prev["implied_vol"],
+                tte=iv_strike_prev["tte"],
+                estimated_event_vol_l=exp_p_events_vol_l,
             )
-            iv_er = y_pct_er * 2000 / math.sqrt(iv_strike_next["tte"])
-
+            _, iv_strike_next["implied_vol_er"] = get_event_removed_iv(
+                raw_iv=iv_strike_next["implied_vol"],
+                tte=iv_strike_next["tte"],
+                estimated_event_vol_l=exp_n_events_vol_l,
+            )
             # Event removed fwd vol
             forward_vol_er = math.sqrt(
-                (iv_strike_next["tte"] * iv_er**2 - iv_strike_prev["tte"] * iv_strike_prev["implied_vol"] ** 2)
+                (
+                    iv_strike_next["tte"] * iv_strike_next["implied_vol_er"] ** 2
+                    - iv_strike_prev["tte"] * iv_strike_prev["implied_vol_er"] ** 2
+                )
                 / (iv_strike_next["tte"] - iv_strike_prev["tte"])
             )
 
@@ -137,10 +162,28 @@ def update_upcoming_event_vol_by_currency(
                     ],
                     "Prev_Option": iv_strike_prev["instrument_name"],
                     "Prev_IV": iv_strike_prev["implied_vol"],
+                    "Prev_IV_ER": iv_strike_prev["implied_vol_er"],
                     "Prev_TTE": iv_strike_prev["tte"],
+                    "Prev_Events": [
+                        {
+                            "utc_dt": events["utc_dt"].isoformat(),
+                            "event_id": events["event_id"],
+                            "event_name": events["event_name"],
+                        }
+                        for events in event_expiry["exp1_events"]
+                    ],
                     "Next_Option": iv_strike_next["instrument_name"],
                     "Next_IV": iv_strike_next["implied_vol"],
+                    "Next_IV_ER": iv_strike_next["implied_vol_er"],
                     "Next_TTE": iv_strike_next["tte"],
+                    "Next_Events": [
+                        {
+                            "utc_dt": events["utc_dt"].isoformat(),
+                            "event_id": events["event_id"],
+                            "event_name": events["event_name"],
+                        }
+                        for events in event_expiry["exp2_events"]
+                    ],
                     "Col_ID": next_expiry.date().strftime("%-d%b%y").upper(),
                     "Currency": currency,
                     "Fwd_Vol": forward_vol,
@@ -159,6 +202,59 @@ def update_upcoming_event_vol_by_currency(
     redis_instance = get_redis_instance()
     redis_instance.set(name=f"FwdVol:{currency}", value=json.dumps(results))
     logger.info("Save to redis success")
+
+
+def update_atm_iv_by_currency(
+    currency: str,
+    all_expirations: list[datetime.date],
+    spot_price: float,
+    est_historical_vol: dict[tuple, float],
+    upcoming_events: list[dict],
+):
+    results = {}
+    all_expirations = sorted(all_expirations)
+    for expiration in all_expirations:
+        expiration_dt = datetime.datetime.combine(expiration, datetime.time(hour=8, tzinfo=datetime.timezone.utc))
+        underlying_price = api_helper.get_underlying_price_for_expiry(currency, expiration)
+        if underlying_price:
+            logger.info(f"Using option's underlying price: ${underlying_price:,.2f}")
+        else:
+            logger.debug(
+                "No future found for {}. Falling back to spot price for strike selection.".format(
+                    expiration.isoformat()
+                )
+            )
+            underlying_price = spot_price
+
+        iv_strike = api_helper.find_deribit_iv(currency, expiration, underlying_price)
+
+        events_included = []
+        event_vol_included: list[float] = []
+        for event in upcoming_events:
+            if event["utc_dt"] < expiration_dt:
+                events_included.append(
+                    {
+                        "utc_dt": event["utc_dt"].isoformat(),
+                        "event_id": event["event_id"],
+                        "event_name": event["event_name"],
+                        "est_event_vol": est_historical_vol[(event["event_name"], currency)],
+                    }
+                )
+                event_vol_included.append(est_historical_vol[(event["event_name"], currency)])
+
+        iv_strike["events_included"] = events_included
+        _, iv_strike["implied_vol_er"] = get_event_removed_iv(
+            raw_iv=iv_strike["implied_vol"],
+            tte=iv_strike["tte"],
+            estimated_event_vol_l=event_vol_included,
+        )
+
+        results[expiration.strftime("%-d%b%y").upper()] = iv_strike
+
+    redis_instance = get_redis_instance()
+    redis_instance.set(name=f"ATM_IV:{currency}", value=json.dumps(results))
+    logger.info("Save ATM IV to redis success")
+    return results
 
 
 def estimate_event_vol() -> dict[tuple, float]:
@@ -190,8 +286,8 @@ def estimate_event_vol() -> dict[tuple, float]:
     previous_vol_df = previous_vol_df[previous_vol_df["Event Vol"] > 0]
     previous_vol_df["Currency"] = previous_vol_df["Symbol"].apply(lambda x: x.replace("-PERPETUAL", ""))
     previous_vol_df = previous_vol_df[["Event Name", "Currency", "Event Vol"]]
-    avg_historical_vol = previous_vol_df.groupby(["Event Name", "Currency"]).mean()
-    return avg_historical_vol.to_dict()
+    est_historical_vol = previous_vol_df.groupby(["Event Name", "Currency"]).last()
+    return est_historical_vol.to_dict()["Event Vol"]
 
 
 def update_upcoming_event_vol():
@@ -209,23 +305,36 @@ def update_upcoming_event_vol():
     if not all_expirations:
         logger.error("Could not fetch expiration dates. Exiting.")
         return
+    all_expirations = sorted(all_expirations)
     logger.info(
         "All option expirations: {}".format(
             " ".join([expiration.isoformat() for expiration in all_expirations]),
         )
     )
-    redis_instance = get_redis_instance()
-    redis_instance.set(
-        name=f"Expirations",
-        value=json.dumps([expiration.strftime("%-d%b%y").upper() for expiration in all_expirations]),
-    )
+
     matched_event_expiry = match_events_to_expiry(upcoming_events, all_expirations)
     # logger.info(f"matched_event_expiry: {matched_event_expiry}")
-    avg_historical_vol = estimate_event_vol()
+    est_historical_vol = estimate_event_vol()
+    redis_instance = get_redis_instance()
+    redis_instance.set(name=f"EstHistVol", value=json.dumps(est_historical_vol))
 
     for inst in INSTRUMENTS:
-        currency = inst.replace("-PERPETUAL", "")
-        update_upcoming_event_vol_by_currency(currency, matched_event_expiry, avg_historical_vol)
+        currency = inst.replace("-PERPETUAL", "").upper()
+        logger.info(f"Fetching current {currency} index (spot) price for fallback...")
+        spot_price = api_helper.get_index_price(currency)
+        if spot_price is None:
+            logger.error(f"Could not fetch {currency} spot price. Exiting.")
+            continue
+        logger.info(f"Current {currency} Spot Price: ${spot_price:,.2f}")
+
+        atm_iv_results = update_atm_iv_by_currency(
+            currency,
+            all_expirations,
+            spot_price,
+            est_historical_vol,
+            upcoming_events,
+        )
+        # update_upcoming_event_vol_by_currency(currency, matched_event_expiry, est_historical_vol)
 
 
 if __name__ == "__main__":

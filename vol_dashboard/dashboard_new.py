@@ -8,7 +8,7 @@ import redis
 from config import INSTRUMENTS
 from dash import Input, Output, dash_table, dcc, html
 from dash.dependencies import Input, Output
-from db_connector import VolDbConnector
+from vol_dashboard.connector.db_connector import VolDbConnector
 from redis_connector import get_redis_instance
 
 CURRENCY_LIST = [instrument_name.replace("-PERPETUAL", "") for instrument_name in INSTRUMENTS]
@@ -47,7 +47,7 @@ class DataLoader:
             return json.loads(data)
         return {}
 
-    def prepare_fwd_vol_data(self, remove_event: bool = False) -> pd.DataFrame:
+    def prepare_fwd_vol_data(self, vol_col_name: str) -> pd.DataFrame:
         all_expirations_l = RDS.get(name=f"Expirations")
         all_expirations = json.loads(all_expirations_l)
         columns = ["Currency"] + all_expirations
@@ -57,10 +57,7 @@ class DataLoader:
             row["Currency"] = currency
             upcoming_event_vol = self.get_upcoming_event_data_from_redis(currency)
             for upcoming_event_record in upcoming_event_vol:
-                if not remove_event:
-                    row[upcoming_event_record["Col_ID"]] = upcoming_event_record["Fwd_Vol"]
-                else:
-                    row[upcoming_event_record["Col_ID"]] = upcoming_event_record["Event_Removed_Vol"]
+                row[upcoming_event_record["Col_ID"]] = upcoming_event_record[vol_col_name]
             fwd_vol_rows_l.append(row)
         fwd_vol_df = pd.DataFrame(fwd_vol_rows_l, columns=columns)
         for expiration in all_expirations:
@@ -70,8 +67,8 @@ class DataLoader:
 
 data_loader = DataLoader()
 previous_vol_df = data_loader.prepare_historical_vol_data()
-fwd_vol_df = data_loader.prepare_fwd_vol_data(remove_event=False)
-event_rm_fwd_vol_df = data_loader.prepare_fwd_vol_data(remove_event=True)
+fwd_vol_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=False)
+fwd_vol_er_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=True)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = html.Div(
@@ -95,9 +92,9 @@ app.layout = html.Div(
         html.Div(
             [
                 dash_table.DataTable(
-                    id="de-event-fwd-vol-table",
-                    columns=[{"name": i, "id": i} for i in event_rm_fwd_vol_df.columns],  # 定义表格列
-                    data=event_rm_fwd_vol_df.to_dict("records"),  # 初始数据
+                    id="fwd-vol-er-table",
+                    columns=[{"name": i, "id": i} for i in fwd_vol_er_df.columns],  # 定义表格列
+                    data=fwd_vol_er_df.to_dict("records"),  # 初始数据
                     style_table={"overflowX": "auto"},
                     style_cell={"textAlign": "left", "padding": "5px"},
                     style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},

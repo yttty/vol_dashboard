@@ -1,10 +1,8 @@
 import os
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 
 import requests
 from loguru import logger
-
-# TODO add ETH as param
 
 
 class DeribitAPI:

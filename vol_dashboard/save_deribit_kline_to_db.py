@@ -6,7 +6,7 @@ import time
 import pandas as pd
 import requests
 from config import INSTRUMENTS as KLINE_INSTRUMENTS
-from db_connector import VolDbConnector
+from vol_dashboard.connector.db_connector import VolDbConnector
 from loguru import logger
 
 
