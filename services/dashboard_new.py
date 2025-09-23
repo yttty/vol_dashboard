@@ -95,7 +95,7 @@ app.layout = html.Div(
         html.Div(
             [
                 dash_table.DataTable(
-                    id="fwd-vol-table",
+                    id="de-event-fwd-vol-table",
                     columns=[{"name": i, "id": i} for i in event_rm_fwd_vol_df.columns],  # 定义表格列
                     data=event_rm_fwd_vol_df.to_dict("records"),  # 初始数据
                     style_table={"overflowX": "auto"},

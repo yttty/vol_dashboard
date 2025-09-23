@@ -53,10 +53,14 @@ def match_events_to_expiry(upcoming_events: list[dict], all_expirations: list[da
     return matched_event_expiry
 
 
+def get_event_removed_iv(raw_iv: float, tte: float, estimated_event_vol: list[float]):
+    pass
+
+
 def update_upcoming_event_vol_by_currency(
     currency: str,
     matched_event_expiry: list[dict],
-    avg_historical_vol: pd.DataFrame,
+    avg_historical_vol: dict[tuple, float],
 ):
     currency = currency.upper()
     logger.info(f"Fetching current {currency} index (spot) price for fallback...")
@@ -94,6 +98,8 @@ def update_upcoming_event_vol_by_currency(
         ):
             logger.info(f"Found IV (prev) and IV (next)")
             fetch_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            # get fwd vol with events from iv_prev and iv_next
             forward_vol = math.sqrt(
                 (
                     iv_strike_next["tte"] * iv_strike_next["implied_vol"] ** 2
@@ -102,7 +108,22 @@ def update_upcoming_event_vol_by_currency(
                 / (iv_strike_next["tte"] - iv_strike_prev["tte"])
             )
 
-            event_removed_vol = -1
+            # get event-removed implied vol for expiry_next
+            estimated_event_vol_l = []
+            for events in event_expiry["matched_events"]:
+                estimated_event_vol_l.append(avg_historical_vol[(events["event_name"], currency)])
+
+            # Event-removed Y
+            y_pct_er = iv_strike_next["implied_vol"] ** 2 * iv_strike_next["tte"] / 2000 - sum(
+                [estimated_event_vol**2 for estimated_event_vol in estimated_event_vol_l]
+            )
+            iv_er = y_pct_er * 2000 / math.sqrt(iv_strike_next["tte"])
+
+            # Event removed fwd vol
+            forward_vol_er = math.sqrt(
+                (iv_strike_next["tte"] * iv_er**2 - iv_strike_prev["tte"] * iv_strike_prev["implied_vol"] ** 2)
+                / (iv_strike_next["tte"] - iv_strike_prev["tte"])
+            )
 
             results.append(
                 {
@@ -123,7 +144,7 @@ def update_upcoming_event_vol_by_currency(
                     "Col_ID": next_expiry.date().strftime("%-d%b%y").upper(),
                     "Currency": currency,
                     "Fwd_Vol": forward_vol,
-                    "Event_Removed_Vol": event_removed_vol,
+                    "Fwd_Vol_ER": forward_vol_er,
                     "Data_Fetch_Timestamp": fetch_timestamp,
                 }
             )
@@ -140,10 +161,18 @@ def update_upcoming_event_vol_by_currency(
     logger.info("Save to redis success")
 
 
-def estimate_event_vol() -> pd.DataFrame:
+def estimate_event_vol() -> dict[tuple, float]:
     """
     Returns:
-        pd.DataFrame: access value by `df.loc["CPI","BTC"]`
+        return value example:
+        {('CPI', 'BTC'): 0.48650858129208474,
+        ('CPI', 'ETH'): 0.8956060885913556,
+        ('FOMC', 'BTC'): 0.8341024650036615,
+        ('FOMC', 'ETH'): 1.2593448799387723,
+        ('NFP', 'BTC'): 0.6719360519847367,
+        ('NFP', 'ETH'): 0.8433502237656211,
+        ('PPI', 'BTC'): 0.20108337643044344,
+        ('PPI', 'ETH'): 0.3779159578296879}
     """
     previous_vol_data = DB_CONN.get_event_vols()
     previous_vol_df = pd.DataFrame(
@@ -162,7 +191,7 @@ def estimate_event_vol() -> pd.DataFrame:
     previous_vol_df["Currency"] = previous_vol_df["Symbol"].apply(lambda x: x.replace("-PERPETUAL", ""))
     previous_vol_df = previous_vol_df[["Event Name", "Currency", "Event Vol"]]
     avg_historical_vol = previous_vol_df.groupby(["Event Name", "Currency"]).mean()
-    return avg_historical_vol
+    return avg_historical_vol.to_dict()
 
 
 def update_upcoming_event_vol():
