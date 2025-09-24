@@ -1,10 +1,7 @@
-import json
-
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
-import redis
 from dash import Input, Output, dash_table, dcc, html
 from dash.dependencies import Input, Output
 
@@ -13,10 +10,10 @@ from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.dashboard.fwd_estimator import FwdVolEstimator
 
-data_loader = FwdVolEstimator()
-previous_vol_df = data_loader.prepare_historical_vol_data()
-fwd_vol_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=False)
-fwd_vol_er_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=True)
+estimator = FwdVolEstimator()
+previous_vol_df = estimator.prepare_historical_vol_data()
+fwd_vol_df: pd.DataFrame = estimator.prepare_fwd_vol_data(remove_event=False)
+fwd_vol_er_df: pd.DataFrame = estimator.prepare_fwd_vol_data(remove_event=True)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = html.Div(
@@ -106,7 +103,7 @@ app.layout = html.Div(
     Input("event-dropdown", "value"),
 )
 def update_hist_vol_currency(selected_currencies, selected_events):
-    previous_vol_df = data_loader.prepare_historical_vol_data()
+    previous_vol_df = estimator.prepare_historical_vol_data()
     if selected_currencies and len(selected_currencies) > 0:
         currency_cond = previous_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in selected_currencies])
     else:
