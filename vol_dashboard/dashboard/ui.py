@@ -9,11 +9,12 @@ from vol_dashboard.config import CURRENCY_LIST, EVENT_LIST
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.dashboard.fwd_estimator import FwdVolEstimator
+from vol_dashboard.dashboard.historical_loader import HistoricalDataLoader
 
 estimator = FwdVolEstimator()
-previous_vol_df = estimator.prepare_historical_vol_data()
-fwd_vol_df: pd.DataFrame = estimator.prepare_fwd_vol_data(remove_event=False)
-fwd_vol_er_df: pd.DataFrame = estimator.prepare_fwd_vol_data(remove_event=True)
+data_loader = HistoricalDataLoader()
+historical_vol_df = data_loader.prepare_historical_vol_data()
+atm_iv_df, fwd_vol_df = estimator.prepare_vol_data()
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = html.Div(
@@ -83,8 +84,8 @@ app.layout = html.Div(
             [
                 dash_table.DataTable(
                     id="hist-vol-table",
-                    columns=[{"name": i, "id": i} for i in previous_vol_df.columns],  # 定义表格列
-                    data=previous_vol_df.to_dict("records"),  # 初始数据
+                    columns=[{"name": i, "id": i} for i in historical_vol_df.columns],  # 定义表格列
+                    data=historical_vol_df.to_dict("records"),  # 初始数据
                     style_table={"overflowX": "auto"},
                     style_cell={"textAlign": "left", "padding": "5px"},
                     style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},

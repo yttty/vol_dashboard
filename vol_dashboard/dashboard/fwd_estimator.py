@@ -1,7 +1,7 @@
 import datetime
 import json
 import math
-from typing import Any
+from typing import Any, Tuple
 
 import pandas as pd
 import redis
@@ -242,7 +242,7 @@ class FwdVolEstimator:
 
         return upcoming_event_vol
 
-    def prepare_vol_data(self) -> pd.DataFrame:
+    def prepare_vol_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         expiry_s = list(map(lambda dt: dt.strftime("%-d%b%y").upper(), self.all_expirations))
         columns = ["Currency"] + expiry_s
         upcoming_event_vol = self.update_upcoming_event_vol()
@@ -283,6 +283,8 @@ class FwdVolEstimator:
 if __name__ == "__main__":
     estimator = FwdVolEstimator()
     try:
-        estimator.update_upcoming_event_vol()
+        atm_iv_df, fwd_vol_df = estimator.prepare_vol_data()
+        print(atm_iv_df.to_string(index=False))
+        print(fwd_vol_df.to_string(index=False))
     except KeyboardInterrupt:
         pass
