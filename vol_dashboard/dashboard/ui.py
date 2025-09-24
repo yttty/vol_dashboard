@@ -89,7 +89,7 @@ def gen_upcoming_vol_divs() -> list[html.Base]:
                     "Re-estimate vol",
                     id="estimate-vol-button",
                     n_clicks=0,
-                    style={"width": "100px", "margin": "5px auto"},
+                    style={"width": "150px", "margin": "5px auto"},
                 ),
             ],
             style={"width": "180px", "margin": "10px auto", "textAlign": "center"},
@@ -177,8 +177,8 @@ def gen_historical_event_vol_divs() -> list[html.Base]:
 
 heading_divs = [html.H1("Vol Dashboard", style={"textAlign": "center"})]
 est_vol_divs = gen_est_vol_divs()
-upcoming_vol_divs = []
-# upcoming_vol_divs = gen_upcoming_vol_divs()
+# upcoming_vol_divs = []
+upcoming_vol_divs = gen_upcoming_vol_divs()
 historical_event_vol_divs = gen_historical_event_vol_divs()
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
