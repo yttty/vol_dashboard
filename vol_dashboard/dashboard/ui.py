@@ -20,7 +20,7 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = html.Div(
     [
         html.H1("Vol Dashboard", style={"textAlign": "center"}),
-        html.H2("Forward Volatility", style={"textAlign": "center"}),
+        html.H2("Fwd Vol", style={"textAlign": "center"}),
         html.Div(
             [
                 dash_table.DataTable(
@@ -34,13 +34,13 @@ app.layout = html.Div(
             ],
             style={"width": "80%", "margin": "20px auto"},
         ),
-        html.H2("Event Removed Forward Volatility", style={"textAlign": "center"}),
+        html.H2("ATM IV", style={"textAlign": "center"}),
         html.Div(
             [
                 dash_table.DataTable(
-                    id="fwd-vol-er-table",
-                    columns=[{"name": i, "id": i} for i in fwd_vol_er_df.columns],  # 定义表格列
-                    data=fwd_vol_er_df.to_dict("records"),  # 初始数据
+                    id="atm-iv-table",
+                    columns=[{"name": i, "id": i} for i in atm_iv_df.columns],  # 定义表格列
+                    data=atm_iv_df.to_dict("records"),  # 初始数据
                     style_table={"overflowX": "auto"},
                     style_cell={"textAlign": "left", "padding": "5px"},
                     style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
@@ -103,7 +103,7 @@ app.layout = html.Div(
     Input("currency-dropdown", "value"),
     Input("event-dropdown", "value"),
 )
-def update_hist_vol_currency(selected_currencies, selected_events):
+def update_hist_vol_table(selected_currencies, selected_events):
     previous_vol_df = estimator.prepare_historical_vol_data()
     if selected_currencies and len(selected_currencies) > 0:
         currency_cond = previous_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in selected_currencies])
