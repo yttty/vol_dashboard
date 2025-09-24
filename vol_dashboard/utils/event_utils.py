@@ -3,8 +3,8 @@ from pprint import pprint
 from typing import Literal
 
 import numpy as np
-from config import MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
 
+from vol_dashboard.config import MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.utils.tz_utils import et_to_utc
 

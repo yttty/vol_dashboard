@@ -5,9 +5,9 @@ import time
 
 import pandas as pd
 import requests
-from config import INSTRUMENTS as KLINE_INSTRUMENTS
 from loguru import logger
 
+from vol_dashboard.config import INSTRUMENTS as KLINE_INSTRUMENTS
 from vol_dashboard.connector.db_connector import VolDbConnector
 
 
@@ -108,6 +108,7 @@ def check_kline(instrument_name: str, start_dt_utc: datetime.datetime, end_dt_ut
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--daemon", action="store_true", help="Run as a background service")
     parser.add_argument("-s", "--start_dt", type=str, help="20250918")
     parser.add_argument("-e", "--end_dt", type=str, help="20250918")
     parser.add_argument("--check", action="store_true")
@@ -117,51 +118,78 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    if args.start_dt:
-        start_dt = datetime.datetime.strptime(args.start_dt, "%Y%m%d").replace(tzinfo=datetime.timezone.utc)
-    else:
-        start_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1440)
-    start_dt = start_dt.replace(second=0, microsecond=0)
+    if args.daemon:
+        logger.info("Run as a background service")
+        while True:
+            start_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=6)
+            end_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+            p_l = [
+                multiprocessing.Process(
+                    target=fetch_kline,
+                    name=f"fetch {instrument_name} kline",
+                    kwargs={
+                        "instrument_name": instrument_name,
+                        "start_dt_utc": start_dt,
+                        "end_dt_utc": end_dt,
+                    },
+                )
+                for instrument_name in KLINE_INSTRUMENTS
+            ]
+            for p in p_l:
+                p.start()
+            for p in p_l:
+                p.join()
 
-    if args.end_dt:
-        end_dt = datetime.datetime.strptime(args.end_dt, "%Y%m%d").replace(tzinfo=datetime.timezone.utc)
+            try:
+                time.sleep(180)
+            except KeyboardInterrupt:
+                exit()
     else:
-        end_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
-    end_dt = end_dt.replace(second=0, microsecond=0)
+        if args.start_dt:
+            start_dt = datetime.datetime.strptime(args.start_dt, "%Y%m%d").replace(tzinfo=datetime.timezone.utc)
+        else:
+            start_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1440)
+        start_dt = start_dt.replace(second=0, microsecond=0)
 
-    assert start_dt < end_dt
+        if args.end_dt:
+            end_dt = datetime.datetime.strptime(args.end_dt, "%Y%m%d").replace(tzinfo=datetime.timezone.utc)
+        else:
+            end_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+        end_dt = end_dt.replace(second=0, microsecond=0)
 
-    if args.check:
-        p_l = [
-            multiprocessing.Process(
-                target=check_kline,
-                name=f"fetch {instrument_name} kline",
-                kwargs={
-                    "instrument_name": instrument_name,
-                    "start_dt_utc": start_dt,
-                    "end_dt_utc": end_dt,
-                },
-            )
-            for instrument_name in KLINE_INSTRUMENTS
-        ]
-        for p in p_l:
-            p.start()
-        for p in p_l:
-            p.join()
-    else:
-        p_l = [
-            multiprocessing.Process(
-                target=fetch_kline,
-                name=f"fetch {instrument_name} kline",
-                kwargs={
-                    "instrument_name": instrument_name,
-                    "start_dt_utc": start_dt,
-                    "end_dt_utc": end_dt,
-                },
-            )
-            for instrument_name in KLINE_INSTRUMENTS
-        ]
-        for p in p_l:
-            p.start()
-        for p in p_l:
-            p.join()
+        assert start_dt < end_dt
+
+        if args.check:
+            p_l = [
+                multiprocessing.Process(
+                    target=check_kline,
+                    name=f"fetch {instrument_name} kline",
+                    kwargs={
+                        "instrument_name": instrument_name,
+                        "start_dt_utc": start_dt,
+                        "end_dt_utc": end_dt,
+                    },
+                )
+                for instrument_name in KLINE_INSTRUMENTS
+            ]
+            for p in p_l:
+                p.start()
+            for p in p_l:
+                p.join()
+        else:
+            p_l = [
+                multiprocessing.Process(
+                    target=fetch_kline,
+                    name=f"fetch {instrument_name} kline",
+                    kwargs={
+                        "instrument_name": instrument_name,
+                        "start_dt_utc": start_dt,
+                        "end_dt_utc": end_dt,
+                    },
+                )
+                for instrument_name in KLINE_INSTRUMENTS
+            ]
+            for p in p_l:
+                p.start()
+            for p in p_l:
+                p.join()
