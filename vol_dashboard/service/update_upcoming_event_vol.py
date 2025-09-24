@@ -3,10 +3,10 @@ import json
 import math
 
 import pandas as pd
-from config import INSTRUMENTS, YEARLY_TRADING_DAYS
 from loguru import logger
 
 from vol_dashboard.api.deribit import DeribitAPI
+from vol_dashboard.config import INSTRUMENTS, YEARLY_TRADING_DAYS
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.utils.event_utils import get_upcoming_events
@@ -255,39 +255,6 @@ def update_atm_iv_by_currency(
     redis_instance.set(name=f"ATM_IV:{currency}", value=json.dumps(results))
     logger.info("Save ATM IV to redis success")
     return results
-
-
-def estimate_event_vol() -> dict[tuple, float]:
-    """
-    Returns:
-        return value example:
-        {('CPI', 'BTC'): 0.48650858129208474,
-        ('CPI', 'ETH'): 0.8956060885913556,
-        ('FOMC', 'BTC'): 0.8341024650036615,
-        ('FOMC', 'ETH'): 1.2593448799387723,
-        ('NFP', 'BTC'): 0.6719360519847367,
-        ('NFP', 'ETH'): 0.8433502237656211,
-        ('PPI', 'BTC'): 0.20108337643044344,
-        ('PPI', 'ETH'): 0.3779159578296879}
-    """
-    previous_vol_data = DB_CONN.get_event_vols()
-    previous_vol_df = pd.DataFrame(
-        previous_vol_data,
-        columns=[
-            "ID",
-            "Event Name",
-            "Symbol",
-            "UTC Time",
-            "Vol Before",
-            "Vol After",
-            "Event Vol",
-        ],
-    )
-    previous_vol_df = previous_vol_df[previous_vol_df["Event Vol"] > 0]
-    previous_vol_df["Currency"] = previous_vol_df["Symbol"].apply(lambda x: x.replace("-PERPETUAL", ""))
-    previous_vol_df = previous_vol_df[["Event Name", "Currency", "Event Vol"]]
-    est_historical_vol = previous_vol_df.groupby(["Event Name", "Currency"]).last()
-    return est_historical_vol.to_dict()["Event Vol"]
 
 
 def update_upcoming_event_vol():

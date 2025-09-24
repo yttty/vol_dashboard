@@ -11,9 +11,9 @@ from dash.dependencies import Input, Output
 from vol_dashboard.config import CURRENCY_LIST, EVENT_LIST
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
-from vol_dashboard.dashboard.data_loader import DataLoader
+from vol_dashboard.dashboard.fwd_estimator import FwdVolEstimator
 
-data_loader = DataLoader()
+data_loader = FwdVolEstimator()
 previous_vol_df = data_loader.prepare_historical_vol_data()
 fwd_vol_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=False)
 fwd_vol_er_df: pd.DataFrame = data_loader.prepare_fwd_vol_data(remove_event=True)

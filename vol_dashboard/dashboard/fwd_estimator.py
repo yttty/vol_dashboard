@@ -7,13 +7,14 @@ from vol_dashboard.config import CURRENCY_LIST, EVENT_LIST
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 
-DB_CONN = VolDbConnector()
-RDS: redis.Redis = get_redis_instance()
 
+class FwdVolEstimator:
+    def __init__(self):
+        self.db_conn = VolDbConnector()
+        self.rds: redis.Redis = get_redis_instance()
 
-class DataLoader:
     def prepare_historical_vol_data(self) -> pd.DataFrame:
-        previous_vol_data = DB_CONN.get_event_vols()
+        previous_vol_data = self.db_conn.get_event_vols()
         previous_vol_df = pd.DataFrame(
             previous_vol_data,
             columns=[
@@ -35,13 +36,13 @@ class DataLoader:
         return previous_vol_df
 
     def get_upcoming_event_data_from_redis(self, currency: str):
-        data = RDS.get(f"FwdVol:{currency}")
+        data = self.rds.get(f"FwdVol:{currency}")
         if data:
             return json.loads(data)
         return {}
 
     def prepare_fwd_vol_data(self, vol_col_name: str) -> pd.DataFrame:
-        all_expirations_l = RDS.get(name=f"Expirations")
+        all_expirations_l = self.rds.get(name=f"Expirations")
         all_expirations = json.loads(all_expirations_l)
         columns = ["Currency"] + all_expirations
         fwd_vol_rows_l = []
