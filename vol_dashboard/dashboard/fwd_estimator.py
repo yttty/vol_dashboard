@@ -255,7 +255,7 @@ class FwdVolEstimator:
             atm_iv_er_row = {}
             atm_iv_row["Currency"] = currency
             atm_iv_er_row["Currency"] = f"{currency} (ER)"
-            for col_id, atm_iv_record in upcoming_event_vol["atm_iv"].items():
+            for col_id, atm_iv_record in upcoming_event_vol[currency]["atm_iv"].items():
                 atm_iv_row[col_id] = atm_iv_record["implied_vol"]
                 atm_iv_er_row[col_id] = atm_iv_record["implied_vol_er"]
             atm_iv_rows_l.append(atm_iv_row)
@@ -266,7 +266,7 @@ class FwdVolEstimator:
             fwd_vol_er_row = {}
             fwd_vol_row["Currency"] = currency
             fwd_vol_er_row["Currency"] = f"{currency} (ER)"
-            for col_id, fwd_vol_record in upcoming_event_vol["fwd_vol"].items():
+            for col_id, fwd_vol_record in upcoming_event_vol[currency]["fwd_vol"].items():
                 fwd_vol_row[col_id] = fwd_vol_record["fwd_vol"]
                 fwd_vol_er_row[col_id] = fwd_vol_record["fwd_vol_er"]
             fwd_vol_rows_l.append(fwd_vol_row)
