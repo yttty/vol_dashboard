@@ -6,8 +6,6 @@ from dash import Input, Output, dash_table, dcc, html
 from dash.dependencies import Input, Output
 
 from vol_dashboard.config import CURRENCY_LIST, EVENT_LIST
-from vol_dashboard.connector.db_connector import VolDbConnector
-from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.dashboard.fwd_estimator import FwdVolEstimator
 from vol_dashboard.dashboard.historical_loader import HistoricalDataLoader
 
@@ -104,16 +102,16 @@ app.layout = html.Div(
     Input("event-dropdown", "value"),
 )
 def update_hist_vol_table(selected_currencies, selected_events):
-    previous_vol_df = estimator.prepare_historical_vol_data()
+    historical_vol_df = data_loader.prepare_historical_vol_data()
     if selected_currencies and len(selected_currencies) > 0:
-        currency_cond = previous_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in selected_currencies])
+        currency_cond = historical_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in selected_currencies])
     else:
-        currency_cond = previous_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in CURRENCY_LIST])
+        currency_cond = historical_vol_df["Symbol"].isin([f"{c}-PERPETUAL" for c in CURRENCY_LIST])
     if selected_events and len(selected_events) > 0:
-        event_cond = previous_vol_df["Event Name"].isin(selected_events)
+        event_cond = historical_vol_df["Event Name"].isin(selected_events)
     else:
-        event_cond = previous_vol_df["Event Name"].isin(EVENT_LIST)
-    filtered_df = previous_vol_df[currency_cond & event_cond]
+        event_cond = historical_vol_df["Event Name"].isin(EVENT_LIST)
+    filtered_df = historical_vol_df[currency_cond & event_cond]
 
     return filtered_df.to_dict("records")
 
