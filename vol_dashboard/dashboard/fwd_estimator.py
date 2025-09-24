@@ -243,9 +243,10 @@ class FwdVolEstimator:
         return upcoming_event_vol
 
     def prepare_vol_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        upcoming_event_vol = self.update_upcoming_event_vol()
+
         expiry_s = list(map(lambda dt: dt.strftime("%-d%b%y").upper(), self.all_expirations))
         columns = ["Currency"] + expiry_s
-        upcoming_event_vol = self.update_upcoming_event_vol()
 
         atm_iv_rows_l = []
         fwd_vol_rows_l = []
