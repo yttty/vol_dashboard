@@ -6,8 +6,9 @@ import time
 import pandas as pd
 import requests
 from config import INSTRUMENTS as KLINE_INSTRUMENTS
-from vol_dashboard.connector.db_connector import VolDbConnector
 from loguru import logger
+
+from vol_dashboard.connector.db_connector import VolDbConnector
 
 
 def fetch_data_for_window(

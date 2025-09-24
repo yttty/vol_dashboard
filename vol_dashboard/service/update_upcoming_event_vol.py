@@ -1,16 +1,16 @@
 import datetime
 import json
 import math
-from pprint import pformat, pprint
 
 import pandas as pd
-from vol_dashboard.api.deribit import DeribitAPI
 from config import INSTRUMENTS, YEARLY_TRADING_DAYS
-from vol_dashboard.connector.db_connector import VolDbConnector
-from event_utils import get_upcoming_events
 from loguru import logger
-from redis_connector import get_redis_instance
-from tz_utils import et_to_utc
+
+from vol_dashboard.api.deribit import DeribitAPI
+from vol_dashboard.connector.db_connector import VolDbConnector
+from vol_dashboard.connector.redis_connector import get_redis_instance
+from vol_dashboard.utils.event_utils import get_upcoming_events
+from vol_dashboard.utils.tz_utils import et_to_utc
 
 api_helper = DeribitAPI()
 DB_CONN = VolDbConnector()

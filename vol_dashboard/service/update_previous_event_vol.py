@@ -2,10 +2,11 @@ import datetime
 
 import numpy as np
 from config import INSTRUMENTS, MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
-from vol_dashboard.connector.db_connector import VolDbConnector
-from event_utils import get_previous_events
 from loguru import logger
-from tz_utils import et_to_utc
+
+from vol_dashboard.connector.db_connector import VolDbConnector
+from vol_dashboard.utils.event_utils import get_previous_events
+from vol_dashboard.utils.tz_utils import et_to_utc
 
 
 def calculate_realized_volatility(prices_by_min: np.array) -> float:
