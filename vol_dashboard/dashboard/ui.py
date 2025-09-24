@@ -14,85 +14,108 @@ data_loader = HistoricalDataLoader()
 historical_vol_df = data_loader.prepare_historical_vol_data()
 atm_iv_df, fwd_vol_df = estimator.prepare_vol_data()
 
+
+def gen_est_vol_divs() -> list[html.Base]:
+    est_vol_divs = [html.H2("Estimations of Event Vol")]
+    for event in EVENT_LIST:
+        est_vol_divs.append(
+            html.Div(
+                [
+                    html.P(f"{event}"),
+                    dcc.Input(
+                        id=f"input-est-vol-{event.lower()}", type="text", placeholder="", style={"width": "300px"}
+                    ),
+                    html.Br(),
+                ]
+            )
+        )
+    est_vol_divs.append(html.Button("Submit", id="submit-button", n_clicks=0))
+    return est_vol_divs
+
+
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.layout = html.Div(
-    [
-        html.H1("Vol Dashboard", style={"textAlign": "center"}),
-        html.H2("Fwd Vol", style={"textAlign": "center"}),
-        html.Div(
-            [
-                dash_table.DataTable(
-                    id="fwd-vol-table",
-                    columns=[{"name": i, "id": i} for i in fwd_vol_df.columns],  # 定义表格列
-                    data=fwd_vol_df.to_dict("records"),  # 初始数据
-                    style_table={"overflowX": "auto"},
-                    style_cell={"textAlign": "left", "padding": "5px"},
-                    style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
-                )
-            ],
-            style={"width": "80%", "margin": "20px auto"},
-        ),
-        html.H2("ATM IV", style={"textAlign": "center"}),
-        html.Div(
-            [
-                dash_table.DataTable(
-                    id="atm-iv-table",
-                    columns=[{"name": i, "id": i} for i in atm_iv_df.columns],  # 定义表格列
-                    data=atm_iv_df.to_dict("records"),  # 初始数据
-                    style_table={"overflowX": "auto"},
-                    style_cell={"textAlign": "left", "padding": "5px"},
-                    style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
-                )
-            ],
-            style={"width": "80%", "margin": "20px auto"},
-        ),
-        html.H2("Historical Event Volatility", style={"textAlign": "center"}),
-        # 下拉框组件, 选择currency
-        html.Div(
-            [
-                html.Label("Select currency:"),
-                dcc.Dropdown(
-                    id="currency-dropdown",
-                    options=[{"label": currency, "value": currency} for currency in CURRENCY_LIST],  # 下拉选项
-                    value=CURRENCY_LIST,
-                    multi=True,
-                    placeholder="Select currency...",
-                ),
-            ],
-            style={"width": "50%", "margin": "20px auto"},
-        ),
-        # 下拉框组件, 选择event
-        html.Div(
-            [
-                html.Label("Select event:"),
-                dcc.Dropdown(
-                    id="event-dropdown",
-                    options=[{"label": event, "value": event} for event in EVENT_LIST],  # 下拉选项
-                    value=EVENT_LIST,
-                    multi=True,
-                    placeholder="Select event...",
-                ),
-            ],
-            style={"width": "50%", "margin": "20px auto"},
-        ),
-        # 图表组件
-        # html.Div([dcc.Graph(id="gdp-line-chart")], style={"width": "80%", "margin": "20px auto"}),
-        # 表格组件
-        html.Div(
-            [
-                dash_table.DataTable(
-                    id="hist-vol-table",
-                    columns=[{"name": i, "id": i} for i in historical_vol_df.columns],  # 定义表格列
-                    data=historical_vol_df.to_dict("records"),  # 初始数据
-                    style_table={"overflowX": "auto"},
-                    style_cell={"textAlign": "left", "padding": "5px"},
-                    style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
-                )
-            ],
-            style={"width": "80%", "margin": "20px auto"},
-        ),
-    ]
-)
+heading_divs = [
+    html.H1("Vol Dashboard", style={"textAlign": "center"}),
+]
+est_vol_divs = gen_est_vol_divs()
+upcoming_vol_divs = [
+    html.H3("Fwd Implied Vol", style={"textAlign": "center"}),
+    html.Div(
+        [
+            dash_table.DataTable(
+                id="fwd-vol-table",
+                columns=[{"name": i, "id": i} for i in fwd_vol_df.columns],  # 定义表格列
+                data=fwd_vol_df.to_dict("records"),  # 初始数据
+                style_table={"overflowX": "auto"},
+                style_cell={"textAlign": "left", "padding": "5px"},
+                style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
+            )
+        ],
+        style={"width": "80%", "margin": "20px auto"},
+    ),
+    html.H3("ATM Implied Vol", style={"textAlign": "center"}),
+    html.Div(
+        [
+            dash_table.DataTable(
+                id="atm-iv-table",
+                columns=[{"name": i, "id": i} for i in atm_iv_df.columns],  # 定义表格列
+                data=atm_iv_df.to_dict("records"),  # 初始数据
+                style_table={"overflowX": "auto"},
+                style_cell={"textAlign": "left", "padding": "5px"},
+                style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
+            )
+        ],
+        style={"width": "80%", "margin": "20px auto"},
+    ),
+]
+historical_event_vol_divs = [
+    html.H2("Historical Event Vol", style={"textAlign": "center"}),
+    # 下拉框组件, 选择currency
+    html.Div(
+        [
+            html.Label("Select currency:"),
+            dcc.Dropdown(
+                id="currency-dropdown",
+                options=[{"label": currency, "value": currency} for currency in CURRENCY_LIST],  # 下拉选项
+                value=CURRENCY_LIST,
+                multi=True,
+                placeholder="Select currency...",
+            ),
+        ],
+        style={"width": "50%", "margin": "20px auto"},
+    ),
+    # 下拉框组件, 选择event
+    html.Div(
+        [
+            html.Label("Select event:"),
+            dcc.Dropdown(
+                id="event-dropdown",
+                options=[{"label": event, "value": event} for event in EVENT_LIST],  # 下拉选项
+                value=EVENT_LIST,
+                multi=True,
+                placeholder="Select event...",
+            ),
+        ],
+        style={"width": "50%", "margin": "20px auto"},
+    ),
+    # 图表组件
+    # html.Div([dcc.Graph(id="gdp-line-chart")], style={"width": "80%", "margin": "20px auto"}),
+    # 表格组件
+    html.Div(
+        [
+            dash_table.DataTable(
+                id="hist-vol-table",
+                columns=[{"name": i, "id": i} for i in historical_vol_df.columns],  # 定义表格列
+                data=historical_vol_df.to_dict("records"),  # 初始数据
+                style_table={"overflowX": "auto"},
+                style_cell={"textAlign": "left", "padding": "5px"},
+                style_header={"backgroundColor": "lightgrey", "fontWeight": "bold"},
+            )
+        ],
+        style={"width": "80%", "margin": "20px auto"},
+    ),
+]
+app.layout = html.Div(heading_divs + est_vol_divs + upcoming_vol_divs + historical_event_vol_divs)
 
 
 # --- 4. 定义回调函数 ---
