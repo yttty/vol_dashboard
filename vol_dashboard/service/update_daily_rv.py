@@ -18,11 +18,11 @@ def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: d
     while _date < end_date:
         kline_start_dt = datetime.datetime.combine(
             _date,
-            datetime.time(0, 0, 0, tzinfo=datetime.timezone.utc),
+            datetime.time(8, 0, 0, tzinfo=datetime.timezone.utc),
         )
         kline_end_dt = datetime.datetime.combine(
             _date + datetime.timedelta(1),
-            datetime.time(0, 0, 0, tzinfo=datetime.timezone.utc),
+            datetime.time(8, 0, 0, tzinfo=datetime.timezone.utc),
         )
         daily_klines: list[tuple] = db_conn.get_klines(
             symbol=instrument_name,
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         logger.info("Run as a background service")
         while True:
             now_dt = datetime.datetime.now(tz=datetime.timezone.utc)
-            if now_dt.hour == 0 and now_dt.minute == 10:
+            if now_dt.hour == 8 and now_dt.minute == 10:
                 end_dt = datetime.datetime.now(datetime.timezone.utc).date()
                 start_dt = end_dt - datetime.timedelta(days=1)
                 p_l = [
