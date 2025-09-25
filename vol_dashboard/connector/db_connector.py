@@ -55,13 +55,38 @@ class EventVol(VolDeclBase):
     update_dt: Mapped[datetime.datetime]
 
 
+class DailyRV(VolDeclBase):
+    __tablename__ = "daily_rv"
+
+    dt: Mapped[datetime.datetime]  # day start time
+    symbol: Mapped[str]
+    exchange: Mapped[str]
+    rv: Mapped[float]
+    update_dt: Mapped[datetime.datetime]
+
+    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
+
+
+class DailyRVEMA(VolDeclBase):
+    __tablename__ = "daily_rv_ema"
+
+    dt: Mapped[datetime.datetime]  # day start time
+    symbol: Mapped[str]
+    exchange: Mapped[str]
+    ema_rv: Mapped[float]  # 21 day ema
+    ema_rv_er: Mapped[float]  # event-removed 21 day ema
+    update_dt: Mapped[datetime.datetime]
+
+    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
+
+
 class KLine(VolDeclBase):
     __tablename__ = "kline"
 
     symbol: Mapped[str]
     interval: Mapped[str]
     """Values: 1m / 5m / 60m / 1d"""
-    timestamp: Mapped[int]
+    timestamp: Mapped[int]  # kline start ts
     """Unit: seconds in UTC"""
     exchange: Mapped[str]
     open: Mapped[float]
@@ -285,6 +310,7 @@ class VolDbConnector(DbConnector):
         to_timestamp: int,  # Unit: UTC seconds
         exchange: str,
     ) -> list[tuple]:
+        """Returned kline is ordered by timestamp ascending"""
         try:
             with self.get_session() as _session:
                 cursor = (
@@ -294,6 +320,7 @@ class VolDbConnector(DbConnector):
                     .where(KLine.exchange == exchange)
                     .where(KLine.timestamp >= from_timestamp)
                     .where(KLine.timestamp < to_timestamp)
+                    .order_by(KLine.timestamp.asc())
                 )
                 return [
                     (
@@ -312,3 +339,41 @@ class VolDbConnector(DbConnector):
         except Exception as e:
             logger.error(str(e))
             return []
+
+    def insert_daily_rv(self, rv_data: tuple) -> bool:
+        dt, symbol, exchange, rv, update_dt = rv_data
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyRV)
+                    .where(DailyRV.dt == dt)
+                    .where(DailyRV.symbol == symbol)
+                    .where(DailyRV.exchange == exchange)
+                )
+                if len(cursor.all()) == 0:
+                    _stmt = insert(DailyRV).values(
+                        dt=dt,
+                        symbol=symbol,
+                        exchange=exchange,
+                        rv=rv,
+                        update_dt=update_dt,
+                    )
+                else:
+                    _stmt = (
+                        update(DailyRV)
+                        .where(DailyRV.dt == dt)
+                        .where(DailyRV.symbol == symbol)
+                        .where(DailyRV.exchange == exchange)
+                        .values(
+                            rv=rv,
+                            update_dt=update_dt,
+                        )
+                    )
+                _session.execute(_stmt)
+        except Exception as e:
+            logger.error("Fail to insert daily rv, reason={}".format(str(e)))
+            if self._debug:
+                logger.debug(traceback.format_exc())
+            return False
+        else:
+            return True

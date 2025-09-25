@@ -10,21 +10,10 @@ from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.utils.event_utils import get_previous_events
 from vol_dashboard.utils.tz_utils import et_to_utc
+from vol_dashboard.utils.vol_utils import calculate_realized_volatility
 
 DB_CONN = VolDbConnector()
 RDS = get_redis_instance()
-
-
-def calculate_realized_volatility(prices_by_min: np.array) -> float:
-    """Calculates annualized realized volatility from 1-minute price data."""
-    if len(prices_by_min) < 2:
-        raise ValueError
-    log_prices = np.log(prices_by_min)
-    log_returns = np.diff(log_prices)
-    realized_variance = np.sum(log_returns**2)
-    minutes_in_year = 365.25 * 24 * 60
-    annualized_volatility = np.sqrt(realized_variance) * np.sqrt(minutes_in_year / len(prices_by_min))
-    return float(annualized_volatility)
 
 
 def update_previous_event_vol():
