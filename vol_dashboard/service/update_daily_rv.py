@@ -41,7 +41,7 @@ def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: d
             )
             success = db_conn.insert_daily_rv(
                 rv_data=(
-                    kline_start_dt,
+                    kline_end_dt,
                     instrument_name,
                     "DERIBIT",
                     rv,

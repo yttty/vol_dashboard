@@ -58,7 +58,7 @@ class EventVol(VolDeclBase):
 class DailyRV(VolDeclBase):
     __tablename__ = "daily_rv"
 
-    dt: Mapped[datetime.datetime]  # day start time
+    dt: Mapped[datetime.datetime]  # day end time
     symbol: Mapped[str]
     exchange: Mapped[str]
     rv: Mapped[float]
@@ -70,7 +70,7 @@ class DailyRV(VolDeclBase):
 class DailyRVEMA(VolDeclBase):
     __tablename__ = "daily_rv_ema"
 
-    dt: Mapped[datetime.datetime]  # day start time
+    dt: Mapped[datetime.datetime]  # day end time
     symbol: Mapped[str]
     exchange: Mapped[str]
     ema_rv: Mapped[float]  # 21 day ema
