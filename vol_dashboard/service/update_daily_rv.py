@@ -10,7 +10,13 @@ import pandas as pd
 from datetimerange import DateTimeRange
 from loguru import logger
 
-from vol_dashboard.config import EMA_RV_DAYS, INSTRUMENTS, MINUTES_AFTER_RELEASE, YEARLY_TRADING_DAYS
+from vol_dashboard.config import (
+    ADJ_MINUTES_AFTER_RELEASE,
+    EMA_RV_DAYS,
+    INSTRUMENTS,
+    MINUTES_AFTER_RELEASE,
+    YEARLY_TRADING_DAYS,
+)
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.utils.event_utils import get_previous_events
 from vol_dashboard.utils.vol_utils import calculate_realized_volatility
@@ -58,7 +64,7 @@ def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: d
         # left: should be excluded, right: should be included
         excluded_time[event_id] = DateTimeRange(
             utc_dt,
-            utc_dt + datetime.timedelta(minutes=MINUTES_AFTER_RELEASE),
+            utc_dt + datetime.timedelta(minutes=ADJ_MINUTES_AFTER_RELEASE.get(event_name, MINUTES_AFTER_RELEASE)),
         )
 
     _date = start_date
