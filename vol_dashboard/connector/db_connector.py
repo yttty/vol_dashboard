@@ -5,6 +5,7 @@ from typing import Any, Dict, Generator, List, Literal
 
 from loguru import logger
 from sqlalchemy import (
+    DateTime,
     Index,
     PrimaryKeyConstraint,
     UniqueConstraint,
@@ -35,9 +36,9 @@ class VolDeclBase(DeclarativeBase):
 class Event(VolDeclBase):
     __tablename__ = "economic_events"
 
-    event_name: Mapped[str]
-    date: Mapped[str]
-    time_et: Mapped[str]
+    event_name: Mapped[str] = mapped_column(nullable=False)
+    date: Mapped[str] = mapped_column(nullable=False)
+    time_et: Mapped[str] = mapped_column(nullable=False)
 
     __table_args__ = (PrimaryKeyConstraint("event_name", "date", "time_et"),)
 
@@ -46,37 +47,26 @@ class EventVol(VolDeclBase):
     __tablename__ = "event_vols"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    event_name: Mapped[str]
-    symbol: Mapped[str]
-    utc_dt: Mapped[datetime.datetime]
-    vol_before: Mapped[float]
-    vol_after: Mapped[float]
-    event_vol: Mapped[float]
-    update_dt: Mapped[datetime.datetime]
+    event_name: Mapped[str] = mapped_column(nullable=False)
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    utc_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    vol_before: Mapped[float] = mapped_column(nullable=False)
+    vol_after: Mapped[float] = mapped_column(nullable=False)
+    event_vol: Mapped[float] = mapped_column(nullable=False)
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class DailyRV(VolDeclBase):
     __tablename__ = "daily_rv"
 
-    dt: Mapped[datetime.datetime]  # day end time
-    symbol: Mapped[str]
-    exchange: Mapped[str]
-    rv: Mapped[float]
-    update_dt: Mapped[datetime.datetime]
-
-    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
-
-
-class DailyEventRemovedRV(VolDeclBase):
-    __tablename__ = "daily_er_rv"
-
-    dt: Mapped[datetime.datetime]  # day end time
-    symbol: Mapped[str]
-    exchange: Mapped[str]
-    rv_er: Mapped[float]
-    er_duration: Mapped[int]  # how many minutes after the event are removed
-    event_id: Mapped[str]  # the event removed
-    update_dt: Mapped[datetime.datetime]
+    dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # day end time
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    exchange: Mapped[str] = mapped_column(nullable=False)
+    rv_raw: Mapped[float] = mapped_column(nullable=False)
+    rv_er: Mapped[float] = mapped_column(nullable=False)
+    er_duration: Mapped[int] = mapped_column(nullable=False)  # how many minutes after the event are removed
+    event_id: Mapped[str] = mapped_column(nullable=False)  # the event removed
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
 
@@ -84,12 +74,12 @@ class DailyEventRemovedRV(VolDeclBase):
 class DailyRVEMA(VolDeclBase):
     __tablename__ = "daily_rv_ema"
 
-    dt: Mapped[datetime.datetime]  # day end time
-    symbol: Mapped[str]
-    exchange: Mapped[str]
-    ema_rv: Mapped[float]  # 21 day ema
-    ema_rv_er: Mapped[float]  # event-removed 21 day ema
-    update_dt: Mapped[datetime.datetime]
+    dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # day end time
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    exchange: Mapped[str] = mapped_column(nullable=False)
+    ema_rv: Mapped[float] = mapped_column(nullable=False)  # 21 day ema
+    ema_rv_er: Mapped[float] = mapped_column(nullable=False)  # event-removed 21 day ema
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
 
@@ -147,6 +137,7 @@ class VolDbConnector(DbConnector):
         self._post_init_tables()
 
     def _init_tables(self) -> None:
+        # XXX should avoid use it in production!
         VolDeclBase.metadata.create_all(bind=self._engine, checkfirst=True)
 
     def _post_init_tables(self) -> None:
@@ -355,7 +346,7 @@ class VolDbConnector(DbConnector):
             return []
 
     def insert_daily_rv(self, rv_data: tuple) -> bool:
-        dt, symbol, exchange, rv, update_dt = rv_data
+        dt, symbol, exchange, rv_raw, rv_er, er_duration, event_id, update_dt = rv_data
         try:
             with self.get_session() as _session:
                 cursor = (
@@ -369,7 +360,10 @@ class VolDbConnector(DbConnector):
                         dt=dt,
                         symbol=symbol,
                         exchange=exchange,
-                        rv=rv,
+                        rv_raw=rv_raw,
+                        rv_er=rv_er,
+                        er_duration=er_duration,
+                        event_id=event_id,
                         update_dt=update_dt,
                     )
                 else:
@@ -379,46 +373,7 @@ class VolDbConnector(DbConnector):
                         .where(DailyRV.symbol == symbol)
                         .where(DailyRV.exchange == exchange)
                         .values(
-                            rv=rv,
-                            update_dt=update_dt,
-                        )
-                    )
-                _session.execute(_stmt)
-        except Exception as e:
-            logger.error("Fail to insert daily rv, reason={}".format(str(e)))
-            if self._debug:
-                logger.debug(traceback.format_exc())
-            return False
-        else:
-            return True
-
-    def insert_daily_er_rv(self, er_rv_data: tuple) -> bool:
-        dt, symbol, exchange, rv_er, er_duration, event_id, update_dt = er_rv_data
-        try:
-            with self.get_session() as _session:
-                cursor = (
-                    _session.query(DailyEventRemovedRV)
-                    .where(DailyEventRemovedRV.dt == dt)
-                    .where(DailyEventRemovedRV.symbol == symbol)
-                    .where(DailyEventRemovedRV.exchange == exchange)
-                )
-                if len(cursor.all()) == 0:
-                    _stmt = insert(DailyEventRemovedRV).values(
-                        dt=dt,
-                        symbol=symbol,
-                        exchange=exchange,
-                        rv_er=rv_er,
-                        er_duration=er_duration,
-                        event_id=event_id,
-                        update_dt=update_dt,
-                    )
-                else:
-                    _stmt = (
-                        update(DailyEventRemovedRV)
-                        .where(DailyEventRemovedRV.dt == dt)
-                        .where(DailyEventRemovedRV.symbol == symbol)
-                        .where(DailyEventRemovedRV.exchange == exchange)
-                        .values(
+                            rv_raw=rv_raw,
                             rv_er=rv_er,
                             er_duration=er_duration,
                             event_id=event_id,
@@ -427,7 +382,7 @@ class VolDbConnector(DbConnector):
                     )
                 _session.execute(_stmt)
         except Exception as e:
-            logger.error("Fail to insert daily event removed rv, reason={}".format(str(e)))
+            logger.error("Fail to insert daily rv, reason={}".format(str(e)))
             if self._debug:
                 logger.debug(traceback.format_exc())
             return False
@@ -460,41 +415,7 @@ class VolDbConnector(DbConnector):
                         data.dt,
                         data.symbol,
                         data.exchange,
-                        data.rv,
-                        data.update_dt,
-                    )
-                    for data in cursor.all()
-                ]
-        except Exception as e:
-            logger.error(str(e))
-            return []
-
-    def get_daily_er_rv(
-        self,
-        symbol: str,
-        exchange: str,
-        from_date: datetime.datetime,
-        to_date: datetime.datetime,
-    ) -> list[tuple]:
-        """return value ordered by date asc"""
-        # remove the tzinfo because the dt field has no tzinfo, make sure the tz is in UTC!
-        from_date = from_date.replace(tzinfo=None)
-        to_date = to_date.replace(tzinfo=None)
-        try:
-            with self.get_session() as _session:
-                cursor = (
-                    _session.query(DailyEventRemovedRV)
-                    .where(DailyEventRemovedRV.symbol == symbol)
-                    .where(DailyEventRemovedRV.exchange == exchange)
-                    .where(DailyEventRemovedRV.dt >= from_date)
-                    .where(DailyEventRemovedRV.dt < to_date)
-                    .order_by(DailyEventRemovedRV.dt.asc())
-                )
-                return [
-                    (
-                        data.dt,
-                        data.symbol,
-                        data.exchange,
+                        data.rv_raw,
                         data.rv_er,
                         data.er_duration,
                         data.event_id,

@@ -2,9 +2,11 @@ import argparse
 import datetime
 import multiprocessing
 import time
+from operator import itemgetter
 from typing import Tuple
 
 import numpy as np
+import pandas as pd
 from datetimerange import DateTimeRange
 from loguru import logger
 
@@ -16,7 +18,6 @@ from vol_dashboard.utils.vol_utils import calculate_realized_volatility
 
 def update_ema_rv(instrument_name: str, start_date: datetime.date, end_date: datetime.date):
     db_conn = VolDbConnector()
-    return
 
     _ema_rv_record_date = start_date
     while _ema_rv_record_date < end_date:
@@ -36,16 +37,16 @@ def update_ema_rv(instrument_name: str, start_date: datetime.date, end_date: dat
             from_date=rv_record_start_dt,
             to_date=rv_record_end_dt,
         )
-        # if len(daily_rv_records) != EMA_RV_DAYS:
-        #     logger.warning(
-        #         f"Not enough daily rv record before {_ema_rv_record_date.isoformat()}, skip processing EMA RV."
-        #     )
-        # else:
-        #     daily_close = np.array(list(map(lambda x: x[7], daily_klines)))
-        #     rv = calculate_realized_volatility(daily_close)
-        #     logger.info(
-        #         f"Inst[{instrument_name}] Date[{_date.isoformat()}] n_klines[{len(daily_klines)}] RV[{rv:.4f}]"
-        #     )
+        if len(daily_rv_records) != EMA_RV_DAYS:
+            logger.warning(
+                f"Not enough daily rv record before {_ema_rv_record_date.isoformat()}, skip processing EMA RV."
+            )
+            _ema_rv_record_date += datetime.timedelta(days=1)
+            continue
+
+        # TODO
+
+        _ema_rv_record_date += datetime.timedelta(days=1)
 
 
 def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: datetime.date, fill_ema: bool = False):
@@ -88,11 +89,6 @@ def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: d
         daily_close = np.array(list(map(lambda x: x[7], daily_klines)))
         raw_rv = calculate_realized_volatility(daily_close)
         logger.info(f"Inst[{instrument_name}] Date[{_date.isoformat()}] RawRV[{raw_rv:.4f}]")
-        raw_rv_success = db_conn.insert_daily_rv(
-            rv_data=(kline_end_dt, instrument_name, "DERIBIT", raw_rv, datetime.datetime.now(tz=datetime.timezone.utc))
-        )
-        if not raw_rv_success:
-            logger.error("Update daily rv failed!")
 
         # process event removed rv, assume only one event in one day
         dtr_orig = DateTimeRange(kline_start_dt, kline_end_dt)
@@ -136,20 +132,21 @@ def update_daily_rv(instrument_name: str, start_date: datetime.date, end_date: d
             logger.info(
                 f"Inst[{instrument_name}] Date[{_date.isoformat()}] ER_RV[{er_rv:.4f}] N[{daily_total_n}] EventRemoved[{event_s}]"
             )
-        er_rv_success = db_conn.insert_daily_er_rv(
-            er_rv_data=(
+
+        insert_rv_success = db_conn.insert_daily_rv(
+            rv_data=(
                 kline_end_dt,
                 instrument_name,
                 "DERIBIT",
+                raw_rv,
                 er_rv,
                 daily_total_n,
                 event_s,
                 datetime.datetime.now(tz=datetime.timezone.utc),
             )
         )
-        if not er_rv_success:
-            logger.error("Update daily event removed rv failed!")
-
+        if not insert_rv_success:
+            logger.error("Update daily rv failed!")
         _date += datetime.timedelta(1)
 
     if fill_ema:
