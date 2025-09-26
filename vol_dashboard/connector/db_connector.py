@@ -67,6 +67,20 @@ class DailyRV(VolDeclBase):
     __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
 
 
+class DailyEventRemovedRV(VolDeclBase):
+    __tablename__ = "daily_er_rv"
+
+    dt: Mapped[datetime.datetime]  # day end time
+    symbol: Mapped[str]
+    exchange: Mapped[str]
+    rv_er: Mapped[float]
+    er_duration: Mapped[int]  # how many minutes after the event are removed
+    event_id: Mapped[str]  # the event removed
+    update_dt: Mapped[datetime.datetime]
+
+    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
+
+
 class DailyRVEMA(VolDeclBase):
     __tablename__ = "daily_rv_ema"
 
@@ -167,7 +181,7 @@ class VolDbConnector(DbConnector):
     def get_events(self) -> list[tuple]:
         try:
             with self.get_session() as _session:
-                cursor = _session.query(Event)
+                cursor = _session.query(Event).order_by(Event.date.asc()).order_by(Event.time_et.asc())
                 return [
                     (
                         data.event_name,
@@ -377,3 +391,117 @@ class VolDbConnector(DbConnector):
             return False
         else:
             return True
+
+    def insert_daily_er_rv(self, er_rv_data: tuple) -> bool:
+        dt, symbol, exchange, rv_er, er_duration, event_id, update_dt = er_rv_data
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyEventRemovedRV)
+                    .where(DailyEventRemovedRV.dt == dt)
+                    .where(DailyEventRemovedRV.symbol == symbol)
+                    .where(DailyEventRemovedRV.exchange == exchange)
+                )
+                if len(cursor.all()) == 0:
+                    _stmt = insert(DailyEventRemovedRV).values(
+                        dt=dt,
+                        symbol=symbol,
+                        exchange=exchange,
+                        rv_er=rv_er,
+                        er_duration=er_duration,
+                        event_id=event_id,
+                        update_dt=update_dt,
+                    )
+                else:
+                    _stmt = (
+                        update(DailyEventRemovedRV)
+                        .where(DailyEventRemovedRV.dt == dt)
+                        .where(DailyEventRemovedRV.symbol == symbol)
+                        .where(DailyEventRemovedRV.exchange == exchange)
+                        .values(
+                            rv_er=rv_er,
+                            er_duration=er_duration,
+                            event_id=event_id,
+                            update_dt=update_dt,
+                        )
+                    )
+                _session.execute(_stmt)
+        except Exception as e:
+            logger.error("Fail to insert daily event removed rv, reason={}".format(str(e)))
+            if self._debug:
+                logger.debug(traceback.format_exc())
+            return False
+        else:
+            return True
+
+    def get_daily_rv(
+        self,
+        symbol: str,
+        exchange: str,
+        from_date: datetime.datetime,
+        to_date: datetime.datetime,
+    ) -> list[tuple]:
+        """return value ordered by date asc"""
+        # remove the tzinfo because the dt field has no tzinfo, make sure the tz is in UTC!
+        from_date = from_date.replace(tzinfo=None)
+        to_date = to_date.replace(tzinfo=None)
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyRV)
+                    .where(DailyRV.symbol == symbol)
+                    .where(DailyRV.exchange == exchange)
+                    .where(DailyRV.dt >= from_date)
+                    .where(DailyRV.dt < to_date)
+                    .order_by(DailyRV.dt.asc())
+                )
+                return [
+                    (
+                        data.dt,
+                        data.symbol,
+                        data.exchange,
+                        data.rv,
+                        data.update_dt,
+                    )
+                    for data in cursor.all()
+                ]
+        except Exception as e:
+            logger.error(str(e))
+            return []
+
+    def get_daily_er_rv(
+        self,
+        symbol: str,
+        exchange: str,
+        from_date: datetime.datetime,
+        to_date: datetime.datetime,
+    ) -> list[tuple]:
+        """return value ordered by date asc"""
+        # remove the tzinfo because the dt field has no tzinfo, make sure the tz is in UTC!
+        from_date = from_date.replace(tzinfo=None)
+        to_date = to_date.replace(tzinfo=None)
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyEventRemovedRV)
+                    .where(DailyEventRemovedRV.symbol == symbol)
+                    .where(DailyEventRemovedRV.exchange == exchange)
+                    .where(DailyEventRemovedRV.dt >= from_date)
+                    .where(DailyEventRemovedRV.dt < to_date)
+                    .order_by(DailyEventRemovedRV.dt.asc())
+                )
+                return [
+                    (
+                        data.dt,
+                        data.symbol,
+                        data.exchange,
+                        data.rv_er,
+                        data.er_duration,
+                        data.event_id,
+                        data.update_dt,
+                    )
+                    for data in cursor.all()
+                ]
+        except Exception as e:
+            logger.error(str(e))
+            return []

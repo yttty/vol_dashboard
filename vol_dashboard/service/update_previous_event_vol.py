@@ -18,7 +18,7 @@ RDS = get_redis_instance()
 
 def update_previous_event_vol():
     previous_events = get_previous_events()
-    for event_name, date_str, time_et_str in previous_events:
+    for event_name, date_str, time_et_str, _ in previous_events:
         naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
         _, utc_dt = et_to_utc(naive_et_dt)
         start_before_dt = utc_dt - datetime.timedelta(minutes=MINUTES_BEFORE_RELEASE)
