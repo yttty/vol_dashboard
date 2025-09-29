@@ -135,9 +135,7 @@ class FwdVolEstimator:
         logger.info("Fetching upcoming events...")
         raw_upcoming_events = get_upcoming_events()
         upcoming_events = []
-        for event_name, date_str, time_et_str in raw_upcoming_events:
-            naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
-            _, utc_dt = et_to_utc(naive_et_dt)
+        for event_name, date_str, time_et_str, utc_dt in raw_upcoming_events:
             event_id = f"{event_name}/{date_str}/{time_et_str}"
             upcoming_events.append({"utc_dt": utc_dt, "event_id": event_id, "event_name": event_name})
 

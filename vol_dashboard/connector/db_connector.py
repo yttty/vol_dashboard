@@ -5,6 +5,7 @@ from typing import Any, Dict, Generator, List, Literal
 
 from loguru import logger
 from sqlalchemy import (
+    DateTime,
     Index,
     PrimaryKeyConstraint,
     UniqueConstraint,
@@ -35,9 +36,9 @@ class VolDeclBase(DeclarativeBase):
 class Event(VolDeclBase):
     __tablename__ = "economic_events"
 
-    event_name: Mapped[str]
-    date: Mapped[str]
-    time_et: Mapped[str]
+    event_name: Mapped[str] = mapped_column(nullable=False)
+    date: Mapped[str] = mapped_column(nullable=False)
+    time_et: Mapped[str] = mapped_column(nullable=False)
 
     __table_args__ = (PrimaryKeyConstraint("event_name", "date", "time_et"),)
 
@@ -46,13 +47,41 @@ class EventVol(VolDeclBase):
     __tablename__ = "event_vols"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    event_name: Mapped[str]
-    symbol: Mapped[str]
-    utc_dt: Mapped[datetime.datetime]
-    vol_before: Mapped[float]
-    vol_after: Mapped[float]
-    event_vol: Mapped[float]
-    update_dt: Mapped[datetime.datetime]
+    event_name: Mapped[str] = mapped_column(nullable=False)
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    utc_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    vol_before: Mapped[float] = mapped_column(nullable=False)
+    vol_after: Mapped[float] = mapped_column(nullable=False)
+    event_vol: Mapped[float] = mapped_column(nullable=False)
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DailyRV(VolDeclBase):
+    __tablename__ = "daily_rv"
+
+    dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # day end time
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    exchange: Mapped[str] = mapped_column(nullable=False)
+    rv_raw: Mapped[float] = mapped_column(nullable=False)
+    rv_er: Mapped[float] = mapped_column(nullable=False)
+    er_duration: Mapped[int] = mapped_column(nullable=False)  # how many minutes after the event are removed
+    event_id: Mapped[str] = mapped_column(nullable=False)  # the event removed
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
+
+
+class DailyRVEMA(VolDeclBase):
+    __tablename__ = "daily_rv_ema"
+
+    dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # day end time
+    symbol: Mapped[str] = mapped_column(nullable=False)
+    exchange: Mapped[str] = mapped_column(nullable=False)
+    ema_rv: Mapped[float] = mapped_column(nullable=False)  # 21 day ema
+    ema_rv_er: Mapped[float] = mapped_column(nullable=False)  # event-removed 21 day ema
+    update_dt: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (PrimaryKeyConstraint("dt", "symbol", "exchange"),)
 
 
 class KLine(VolDeclBase):
@@ -61,7 +90,7 @@ class KLine(VolDeclBase):
     symbol: Mapped[str]
     interval: Mapped[str]
     """Values: 1m / 5m / 60m / 1d"""
-    timestamp: Mapped[int]
+    timestamp: Mapped[int]  # kline start ts
     """Unit: seconds in UTC"""
     exchange: Mapped[str]
     open: Mapped[float]
@@ -108,6 +137,7 @@ class VolDbConnector(DbConnector):
         self._post_init_tables()
 
     def _init_tables(self) -> None:
+        # XXX should avoid use it in production!
         VolDeclBase.metadata.create_all(bind=self._engine, checkfirst=True)
 
     def _post_init_tables(self) -> None:
@@ -142,7 +172,7 @@ class VolDbConnector(DbConnector):
     def get_events(self) -> list[tuple]:
         try:
             with self.get_session() as _session:
-                cursor = _session.query(Event)
+                cursor = _session.query(Event).order_by(Event.date.asc()).order_by(Event.time_et.asc())
                 return [
                     (
                         data.event_name,
@@ -285,6 +315,7 @@ class VolDbConnector(DbConnector):
         to_timestamp: int,  # Unit: UTC seconds
         exchange: str,
     ) -> list[tuple]:
+        """Returned kline is ordered by timestamp ascending"""
         try:
             with self.get_session() as _session:
                 cursor = (
@@ -294,6 +325,7 @@ class VolDbConnector(DbConnector):
                     .where(KLine.exchange == exchange)
                     .where(KLine.timestamp >= from_timestamp)
                     .where(KLine.timestamp < to_timestamp)
+                    .order_by(KLine.timestamp.asc())
                 )
                 return [
                     (
@@ -306,6 +338,88 @@ class VolDbConnector(DbConnector):
                         data.low,
                         data.close,
                         data.volume,
+                    )
+                    for data in cursor.all()
+                ]
+        except Exception as e:
+            logger.error(str(e))
+            return []
+
+    def insert_daily_rv(self, rv_data: tuple) -> bool:
+        dt, symbol, exchange, rv_raw, rv_er, er_duration, event_id, update_dt = rv_data
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyRV)
+                    .where(DailyRV.dt == dt)
+                    .where(DailyRV.symbol == symbol)
+                    .where(DailyRV.exchange == exchange)
+                )
+                if len(cursor.all()) == 0:
+                    _stmt = insert(DailyRV).values(
+                        dt=dt,
+                        symbol=symbol,
+                        exchange=exchange,
+                        rv_raw=rv_raw,
+                        rv_er=rv_er,
+                        er_duration=er_duration,
+                        event_id=event_id,
+                        update_dt=update_dt,
+                    )
+                else:
+                    _stmt = (
+                        update(DailyRV)
+                        .where(DailyRV.dt == dt)
+                        .where(DailyRV.symbol == symbol)
+                        .where(DailyRV.exchange == exchange)
+                        .values(
+                            rv_raw=rv_raw,
+                            rv_er=rv_er,
+                            er_duration=er_duration,
+                            event_id=event_id,
+                            update_dt=update_dt,
+                        )
+                    )
+                _session.execute(_stmt)
+        except Exception as e:
+            logger.error("Fail to insert daily rv, reason={}".format(str(e)))
+            if self._debug:
+                logger.debug(traceback.format_exc())
+            return False
+        else:
+            return True
+
+    def get_daily_rv(
+        self,
+        symbol: str,
+        exchange: str,
+        from_date: datetime.datetime,
+        to_date: datetime.datetime,
+    ) -> list[tuple]:
+        """return value ordered by date asc"""
+        # remove the tzinfo because the dt field has no tzinfo, make sure the tz is in UTC!
+        from_date = from_date.replace(tzinfo=None)
+        to_date = to_date.replace(tzinfo=None)
+        try:
+            with self.get_session() as _session:
+                cursor = (
+                    _session.query(DailyRV)
+                    .where(DailyRV.symbol == symbol)
+                    .where(DailyRV.exchange == exchange)
+                    .where(DailyRV.dt >= from_date)
+                    .where(DailyRV.dt < to_date)
+                    .order_by(DailyRV.dt.asc())
+                )
+                return [
+                    (
+                        data.dt,
+                        data.symbol,
+                        data.exchange,
+                        data.rv_raw,
+                        data.rv_er,
+                        data.er_duration,
+                        data.event_id,
+                        data.update_dt,
                     )
                     for data in cursor.all()
                 ]

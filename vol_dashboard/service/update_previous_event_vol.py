@@ -5,35 +5,26 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from vol_dashboard.config import INSTRUMENTS, MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
+from vol_dashboard.config import ADJ_MINUTES_AFTER_RELEASE, INSTRUMENTS, MINUTES_AFTER_RELEASE, MINUTES_BEFORE_RELEASE
 from vol_dashboard.connector.db_connector import VolDbConnector
 from vol_dashboard.connector.redis_connector import get_redis_instance
 from vol_dashboard.utils.event_utils import get_previous_events
 from vol_dashboard.utils.tz_utils import et_to_utc
+from vol_dashboard.utils.vol_utils import calculate_realized_volatility
 
 DB_CONN = VolDbConnector()
 RDS = get_redis_instance()
 
 
-def calculate_realized_volatility(prices_by_min: np.array) -> float:
-    """Calculates annualized realized volatility from 1-minute price data."""
-    if len(prices_by_min) < 2:
-        raise ValueError
-    log_prices = np.log(prices_by_min)
-    log_returns = np.diff(log_prices)
-    realized_variance = np.sum(log_returns**2)
-    minutes_in_year = 365.25 * 24 * 60
-    annualized_volatility = np.sqrt(realized_variance) * np.sqrt(minutes_in_year / len(prices_by_min))
-    return float(annualized_volatility)
-
-
 def update_previous_event_vol():
     previous_events = get_previous_events()
-    for event_name, date_str, time_et_str in previous_events:
+    for event_name, date_str, time_et_str, _ in previous_events:
         naive_et_dt = datetime.datetime.strptime(f"{date_str} {time_et_str}", "%Y-%m-%d %H:%M")
         _, utc_dt = et_to_utc(naive_et_dt)
         start_before_dt = utc_dt - datetime.timedelta(minutes=MINUTES_BEFORE_RELEASE)
-        end_after_dt = utc_dt + datetime.timedelta(minutes=MINUTES_AFTER_RELEASE)
+        end_after_dt = utc_dt + datetime.timedelta(
+            minutes=ADJ_MINUTES_AFTER_RELEASE.get(event_name, MINUTES_AFTER_RELEASE)
+        )
 
         for instrument_name in INSTRUMENTS:
             event_vol_id = f"{event_name}/{date_str}/{time_et_str}/{instrument_name}"
@@ -57,7 +48,7 @@ def update_previous_event_vol():
                 to_timestamp=int(end_after_dt.timestamp()),
                 exchange="DERIBIT",
             )
-            if len(after_klines) != MINUTES_AFTER_RELEASE:
+            if len(after_klines) != ADJ_MINUTES_AFTER_RELEASE.get(event_name, MINUTES_AFTER_RELEASE):
                 logger.error(f"Not enough kline after {event_vol_id}")
                 continue
             after_close = np.array(list(map(lambda kl: kl[7], after_klines)))
