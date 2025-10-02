@@ -3,7 +3,7 @@ import numpy as np
 from vol_dashboard.config import YEARLY_TRADING_DAYS
 
 
-def calculate_realized_volatility(prices_by_min: np.array) -> float:
+def calculate_realized_volatility(prices_by_min: np.ndarray) -> float:
     """Calculates annualized realized volatility from 1-minute price data."""
     if len(prices_by_min) < 2:
         raise ValueError
